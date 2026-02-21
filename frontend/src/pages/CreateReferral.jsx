@@ -5,9 +5,8 @@ import { Input, Label } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
 import { Badge } from '../components/ui/Badge';
-import { createReferral } from '../api/referrals';
+import { createReferral, computeReferral } from '../api/referrals';
 import { generateClinicalInsight } from '../lib/triageAI';
-import { computeTriageScore } from '../lib/triageScore';
 import { Activity, User, HeartPulse, Building2, MapPin, CheckCircle2, Navigation, Stethoscope, AlertTriangle, Sparkles, Home } from 'lucide-react';
 
 const CreateReferral = () => {
@@ -83,7 +82,7 @@ const CreateReferral = () => {
             delete apiPayload.spo2;
             delete apiPayload.age;
 
-            const data = await createReferral(apiPayload);
+            const data = await computeReferral(apiPayload);
 
             const travelTime = data.travelTime ?? data.estimatedTravelTime;
             if (travelTime === undefined || travelTime === null) {
@@ -105,12 +104,6 @@ const CreateReferral = () => {
                 urgency: patientInfo.urgency
             });
 
-            const dynamicScore = computeTriageScore({
-                bp: patientInfo.bp,
-                hr: patientInfo.hr,
-                spo2: patientInfo.spo2,
-                urgency: patientInfo.urgency
-            });
 
             const newReferralRecord = {
                 id: `REF-2026-${(1042 + storedReferrals.length).toString().padStart(4, '0')}`,
@@ -123,13 +116,13 @@ const CreateReferral = () => {
                 spo2: patientInfo.spo2,
                 assignedHospital: hosp,
                 travelTime: `${travelTime} mins`,
-                score: dynamicScore,
-                status: 'Pending Decision', // Temporary status until chosen
+                score: data.score,
+                status: 'Pending Decision',
                 aiInsight: aiAssessment.text
             };
 
             setCreatedReferral(newReferralRecord);
-            setReferralResult({ ...data, hospital: hosp, score: newReferralRecord.score, travelTime: newReferralRecord.travelTime, aiInsight: newReferralRecord.aiInsight });
+            setReferralResult({ ...data, hospital: hosp, score: data.score, travelTime: newReferralRecord.travelTime, aiInsight: newReferralRecord.aiInsight });
             window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (error) {
             console.error("Submission failed", error);
@@ -140,16 +133,24 @@ const CreateReferral = () => {
         }
     };
 
-    const handleLifecycleAction = (status) => {
+    const handleLifecycleAction = async (status) => {
         if (!createdReferral) return;
 
-        // Apply chosen status
-        const finalizedReferral = { ...createdReferral, status };
-
-        // Save to localStorage
-        const storedReferrals = JSON.parse(localStorage.getItem('referrals')) || [];
-        storedReferrals.unshift(finalizedReferral);
-        localStorage.setItem('referrals', JSON.stringify(storedReferrals));
+        try {
+            // Only now do we write to the database with the doctor's chosen status
+            await createReferral({
+                patientAge: parseInt(createdReferral.patientAge, 10),
+                symptoms: createdReferral.symptoms,
+                vitals: `BP ${createdReferral.bp}, HR ${createdReferral.hr}, SpO2 ${createdReferral.spo2}`,
+                urgency: createdReferral.urgency,
+                status,
+                assignedHospital: createdReferral.assignedHospital,
+                score: createdReferral.score,
+                travelTime: createdReferral.travelTime
+            });
+        } catch (err) {
+            console.error('Failed to save referral', err);
+        }
 
         navigate('/referrals');
     };
@@ -197,7 +198,7 @@ const CreateReferral = () => {
                                 <div>
                                     <p className="text-xs font-bold text-surface-400 uppercase tracking-widest mb-1.5 text-left">Priority Score</p>
                                     <div className="flex items-baseline gap-1 mt-1">
-                                        <span className="text-3xl font-display font-bold text-surface-900">{referralResult.score}</span>
+                                        <span className="text-3xl font-display font-bold text-surface-900">{Number(referralResult.score).toFixed(2)}</span>
                                         <span className="text-surface-400 font-semibold text-sm">/ 100</span>
                                     </div>
                                 </div>

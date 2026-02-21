@@ -101,7 +101,7 @@ const ReferralStatus = () => {
                         const urgency = getUrgencySettings(referral.score);
                         const UrgencyIcon = urgency.icon;
                         const hospitalName = referral.hospital || referral.assignedHospital || 'Regional Medical Center';
-                        const score = referral.score || Math.floor(Math.random() * 40) + 50;
+                        const score = referral.score != null ? Number(referral.score) : null;
 
                         return (
                             <div
@@ -137,7 +137,7 @@ const ReferralStatus = () => {
                                         <div className="text-center md:text-left">
                                             <p className="text-[11px] font-bold text-surface-400 uppercase tracking-widest mb-1.5">Priority</p>
                                             <div className={`inline-flex items-center justify-center w-9 h-9 rounded-full ${urgency.color} font-bold font-display border shadow-sm`}>
-                                                {score}
+                                                {score != null ? score.toFixed(2) : 'N/A'}
                                             </div>
                                         </div>
                                         <div className="text-center md:text-left">
@@ -309,7 +309,7 @@ const ReferralStatus = () => {
                                     <p className="text-[11px] font-bold text-surface-400 uppercase tracking-widest mb-2">Priority Score</p>
                                     <div className="flex items-baseline gap-2">
                                         <span className={`text-4xl font-black font-display tracking-tight ${selectedReferral.urgency.color.split(' ')[1]}`}>
-                                            {selectedReferral.score}
+                                            {Number(selectedReferral.score).toFixed(2)}
                                         </span>
                                         <span className="text-sm font-bold text-surface-400">/ 100</span>
                                     </div>

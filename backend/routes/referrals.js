@@ -18,54 +18,70 @@ export const validateReferral = [
     body('vitals').notEmpty().withMessage('vitals are required')
 ];
 
-router.post('/', authMiddleware, validateReferral, async (req, res, next) => {
+// Shared helper: runs Dijkstra + scoring, returns best hospital info WITHOUT saving
+async function computeBestHospital({ userLocation, urgency }) {
+    if (!graph[userLocation]) return { error: 'Invalid location node', status: 400 };
+
+    const distances = calculateShortestPath(graph, userLocation);
+    const dbHospitals = await Hospital.find({});
+
+    let bestHospital = null;
+    let bestScore = -Infinity;
+    let selectedTravelTime = 0;
+
+    for (const hospital of dbHospitals) {
+        if (hospital.availableCapacity === 0) continue;
+        const rawTravelTime = distances[hospital.locationNode];
+        if (!Number.isFinite(rawTravelTime)) return { error: 'Routing graph incomplete for this location', status: 500 };
+
+        const score = calculateReferralScore({
+            travelTime: rawTravelTime,
+            availableCapacity: hospital.availableCapacity,
+            totalCapacity: hospital.totalCapacity,
+            loadFactor: hospital.loadFactor,
+            urgency
+        });
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestHospital = hospital;
+            selectedTravelTime = rawTravelTime;
+        }
+    }
+
+    if (!bestHospital) return { error: 'No available hospitals found', status: 400 };
+
+    return {
+        assignedHospital: bestHospital.name,
+        score: Number(bestScore.toFixed(4)),
+        travelTime: selectedTravelTime
+    };
+}
+
+// POST /compute — returns optimal hospital recommendation WITHOUT saving to DB
+router.post('/compute', authMiddleware, validateReferral, async (req, res) => {
     try {
         const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ message: errors.array()[0].msg });
-        }
+        if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
-        const { patientAge, symptoms, vitals, urgency } = req.body;
+        const { urgency } = req.body;
+        const result = await computeBestHospital({ userLocation: req.user.location, urgency });
 
-        const userLocation = req.user.location;
+        if (result.error) return res.status(result.status).json({ error: result.error });
 
-        if (!graph[userLocation]) {
-            return res.status(400).json({ error: "Invalid location node" });
-        }
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ message: 'Server Error' });
+    }
+});
 
-        const distances = calculateShortestPath(graph, userLocation);
-        const dbHospitals = await Hospital.find({});
+// POST / — saves referral to DB. Called only when doctor commits to an action.
+router.post('/', authMiddleware, validateReferral, async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
-        let bestHospital = null;
-        let bestScore = -Infinity;
-        let selectedTravelTime = 0;
-
-        for (const hospital of dbHospitals) {
-            if (hospital.availableCapacity === 0) continue;
-
-            const rawTravelTime = distances[hospital.locationNode];
-            if (!Number.isFinite(rawTravelTime)) {
-                return res.status(500).json({ error: "Routing graph incomplete for this location" });
-            }
-
-            const score = calculateReferralScore({
-                travelTime: rawTravelTime,
-                availableCapacity: hospital.availableCapacity,
-                totalCapacity: hospital.totalCapacity,
-                loadFactor: hospital.loadFactor,
-                urgency
-            });
-
-            if (score > bestScore) {
-                bestScore = score;
-                bestHospital = hospital;
-                selectedTravelTime = rawTravelTime;
-            }
-        }
-
-        if (!bestHospital) {
-            return res.status(400).json({ message: 'No available hospitals found' });
-        }
+        const { patientAge, symptoms, vitals, urgency, status, assignedHospital, score, travelTime } = req.body;
 
         const AUTO_ACCEPT_MS = process.env.AUTO_ACCEPT_MS || 5000;
 
@@ -75,10 +91,10 @@ router.post('/', authMiddleware, validateReferral, async (req, res, next) => {
             symptoms,
             vitals,
             urgency,
-            assignedHospital: bestHospital.name,
-            score: bestScore,
-            travelTime: selectedTravelTime,
-            status: 'Pending',
+            assignedHospital,
+            score: Number(Number(score).toFixed(4)),
+            travelTime,
+            status: status || 'Pending',
             autoAcceptAt: new Date(Date.now() + Number(AUTO_ACCEPT_MS))
         });
 
@@ -86,10 +102,10 @@ router.post('/', authMiddleware, validateReferral, async (req, res, next) => {
 
         res.status(201).json({
             referralId: referral._id,
-            assignedHospital: bestHospital.name,
-            score: bestScore,
-            travelTime: selectedTravelTime,
-            status: 'Pending'
+            assignedHospital: referral.assignedHospital,
+            score: referral.score,
+            travelTime: referral.travelTime,
+            status: referral.status
         });
     } catch (error) {
         res.status(500).json({ message: 'Server Error' });

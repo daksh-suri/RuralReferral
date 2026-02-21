@@ -31,10 +31,12 @@ const Dashboard = () => {
                 const pendingCount = data.filter(r => r.status === 'Pending').length;
                 const acceptedCount = data.filter(r => r.status === 'Accepted').length;
 
-                // Mock average calculation
                 const totalMins = data.reduce((acc, curr) => {
-                    const timeMatch = curr.estimatedTravelTime?.match(/(\d+)/);
-                    if (timeMatch) return acc + parseInt(timeMatch[1]);
+                    const t = curr.travelTime;
+                    if (typeof t === 'number' && !isNaN(t)) return acc + t;
+                    // fall back to parsing string form if present
+                    const match = String(curr.estimatedTravelTime ?? '').match(/(\d+)/);
+                    if (match) return acc + parseInt(match[1]);
                     return acc;
                 }, 0);
 
@@ -160,16 +162,16 @@ const Dashboard = () => {
                                             <div className="flex items-center gap-4">
                                                 {/* Severity Score Indicator */}
                                                 <div className="w-12 h-12 rounded-full border-[3px] border-surface-200 flex items-center justify-center font-bold text-surface-700 font-display shadow-sm bg-white shrink-0">
-                                                    {referral.score}
+                                                    {referral.score != null ? Number(referral.score).toFixed(2) : 'N/A'}
                                                 </div>
                                                 <div>
                                                     <h4 className="font-bold text-surface-900 text-base flex items-center gap-2">
                                                         <Building2 className="w-4 h-4 text-surface-400 shrink-0" />
-                                                        {referral.assignedHospital}
+                                                        {referral.assignedHospital || 'Regional Medical Center'}
                                                     </h4>
                                                     <div className="flex items-center text-sm text-surface-500 mt-1 font-medium">
                                                         <Clock className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                                                        {referral.travelTime} mins travel
+                                                        {referral.estimatedTravelTime || '45 mins travel'}
                                                     </div>
                                                 </div>
                                             </div>
