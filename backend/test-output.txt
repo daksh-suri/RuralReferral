@@ -1,0 +1,37 @@
+--- TESTING SIGNUP ---
+Signup Status: 400
+Signup Response: { message: 'User already exists' }
+
+--- TESTING LOGIN ---
+Login Status: 200
+Login Response: {
+  token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTk5Njg2YTM4YzAzZTMzZTU5ZWQ2MGYiLCJsb2NhdGlvbiI6IlZpbGxhZ2UgQSIsImlhdCI6MTc3MTY2MTUyMiwiZXhwIjoxNzcxNzQ3OTIyfQ.PMWh1yrjD5t8L6UjMZZvVWOcHoZ-mFpc5dDjQxP7JsA'
+}
+
+--- TESTING CREATE REFERRAL ---
+Create Referral Status: 201
+Create Referral Response: {
+  assignedHospital: 'City General Hospital',
+  score: -30.8,
+  travelTime: 45,
+  status: 'Pending'
+}
+
+--- WAITING 6 SECONDS FOR AUTO-ACCEPT ---
+
+--- TESTING GET REFERRALS ---
+Get Referrals Status: 200
+Get Referrals Response: [
+  {
+    assignedHospital: 'City General Hospital',
+    score: -30.8,
+    travelTime: 45,
+    status: 'Accepted'
+  },
+  {
+    assignedHospital: 'City General Hospital',
+    score: -30.8,
+    travelTime: 45,
+    status: 'Accepted'
+  }
+]
