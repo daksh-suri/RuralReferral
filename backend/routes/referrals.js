@@ -6,6 +6,7 @@ import { authMiddleware } from '../middleware/authMiddleware.js';
 import { graph } from '../utils/hospitals.js';
 import { calculateShortestPath } from '../utils/dijkstra.js';
 import { calculateReferralScore } from '../utils/referralScoring.js';
+import { calculatePriorityIndex } from '../utils/priorityIndex.js';
 
 const router = express.Router();
 
@@ -15,7 +16,10 @@ export const validateReferral = [
         .withMessage('patientAge must be an integer between 0 and 120'),
     body('urgency').isIn(['High', 'Medium', 'Low']).withMessage('urgency must be High, Medium, or Low'),
     body('symptoms').notEmpty().withMessage('symptoms are required'),
-    body('vitals').notEmpty().withMessage('vitals are required')
+    body('vitals').notEmpty().withMessage('vitals are required'),
+    body('trauma').optional().isBoolean(),
+    body('symptomSeverity').optional().isInt({ min: 1, max: 10 }),
+    body('conscious').optional().isBoolean()
 ];
 
 // Shared helper: runs Dijkstra + scoring, returns best hospital info WITHOUT saving
@@ -32,6 +36,10 @@ async function computeBestHospital({ userLocation, urgency }) {
     for (const hospital of dbHospitals) {
         if (hospital.availableCapacity === 0) continue;
         const rawTravelTime = distances[hospital.locationNode];
+        console.log("Computed travelTime:", rawTravelTime);
+        if (rawTravelTime === undefined || rawTravelTime === null) {
+            return { error: 'Routing graph missing location', status: 500 };
+        }
         if (!Number.isFinite(rawTravelTime)) return { error: 'Routing graph incomplete for this location', status: 500 };
 
         const score = calculateReferralScore({
@@ -81,9 +89,45 @@ router.post('/', authMiddleware, validateReferral, async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
-        const { patientAge, symptoms, vitals, urgency, status, assignedHospital, score, travelTime } = req.body;
+        const { patientAge, symptoms, vitals, urgency, status, assignedHospital, score, travelTime, trauma, symptomSeverity, conscious } = req.body;
 
         const AUTO_ACCEPT_MS = process.env.AUTO_ACCEPT_MS || 5000;
+
+        // Parse travelTime: accept number or string like "45 mins"
+        if (travelTime === undefined || travelTime === null) {
+            return res.status(400).json({ message: "travelTime is required from routing engine" });
+        }
+        const travelTimeNum = typeof travelTime === 'number' && !isNaN(travelTime)
+            ? travelTime
+            : parseInt(String(travelTime).replace(/\D/g, ''), 10);
+
+        if (isNaN(travelTimeNum)) {
+            return res.status(400).json({ message: "Invalid travelTime format or missing travel time" });
+        }
+
+        // Map frontend statuses to schema enum: Escalated -> Pending; Closed Local -> Accepted
+        const schemaStatus = (status === 'Escalated')
+            ? 'Pending'
+            : (status && status.startsWith('Closed Local'))
+                ? 'Accepted'
+                : (['Pending', 'Accepted'].includes(status) ? status : 'Pending');
+
+        // Priority Index: isolated classification layer, patient condition only (no routing/capacity)
+        let priorityIndex, priorityLevel;
+        try {
+            const result = calculatePriorityIndex({
+                vitals,
+                age: patientAge,
+                symptomSeverity,
+                urgency,
+                trauma,
+                conscious
+            });
+            priorityIndex = result.priorityIndex;
+            priorityLevel = result.priorityLevel;
+        } catch (priorityErr) {
+            return res.status(400).json({ message: priorityErr.message || 'Invalid priority input data' });
+        }
 
         const referral = new Referral({
             userId: req.user.userId,
@@ -93,9 +137,11 @@ router.post('/', authMiddleware, validateReferral, async (req, res) => {
             urgency,
             assignedHospital,
             score: Number(Number(score).toFixed(4)),
-            travelTime,
-            status: status || 'Pending',
-            autoAcceptAt: new Date(Date.now() + Number(AUTO_ACCEPT_MS))
+            travelTime: travelTimeNum,
+            status: schemaStatus,
+            autoAcceptAt: new Date(Date.now() + Number(AUTO_ACCEPT_MS)),
+            priorityIndex,
+            priorityLevel
         });
 
         await referral.save();
@@ -105,7 +151,9 @@ router.post('/', authMiddleware, validateReferral, async (req, res) => {
             assignedHospital: referral.assignedHospital,
             score: referral.score,
             travelTime: referral.travelTime,
-            status: referral.status
+            status: referral.status,
+            priorityIndex: referral.priorityIndex,
+            priorityLevel: referral.priorityLevel
         });
     } catch (error) {
         res.status(500).json({ message: 'Server Error' });
@@ -123,6 +171,8 @@ router.get('/', authMiddleware, async (req, res) => {
             travelTime: r.travelTime,
             status: r.status,
             urgency: r.urgency,
+            priorityIndex: r.priorityIndex,
+            priorityLevel: r.priorityLevel,
             createdAt: r.createdAt,
             acceptedAt: r.acceptedAt
         }));

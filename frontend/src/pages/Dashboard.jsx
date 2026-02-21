@@ -7,6 +7,12 @@ import { getReferrals } from '../api/referrals';
 import { getRoutingMetrics } from '../api/metrics';
 import { Activity, Clock, CheckCircle2, AlertCircle, ArrowRight, PlusCircle, Building2, MapPin, Network, GitGraph, Zap, Cpu } from 'lucide-react';
 
+const getPriorityColor = (priorityLevel) => {
+    if (priorityLevel === "HIGH") return "text-red-600 font-bold";
+    if (priorityLevel === "MEDIUM") return "text-orange-500 font-bold";
+    return "text-green-600 font-bold";
+};
+
 const Dashboard = () => {
     const navigate = useNavigate();
     const [stats, setStats] = useState({
@@ -157,29 +163,45 @@ const Dashboard = () => {
                                 </div>
                             ) : recentReferrals.length > 0 ? (
                                 <div className="divide-y divide-surface-100/80">
-                                    {recentReferrals.map((referral, index) => (
-                                        <div key={index} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-surface-50/50 transition-colors gap-4">
-                                            <div className="flex items-center gap-4">
-                                                {/* Severity Score Indicator */}
-                                                <div className="w-12 h-12 rounded-full border-[3px] border-surface-200 flex items-center justify-center font-bold text-surface-700 font-display shadow-sm bg-white shrink-0">
-                                                    {referral.score != null ? Number(referral.score).toFixed(2) : 'N/A'}
-                                                </div>
-                                                <div>
-                                                    <h4 className="font-bold text-surface-900 text-base flex items-center gap-2">
-                                                        <Building2 className="w-4 h-4 text-surface-400 shrink-0" />
-                                                        {referral.assignedHospital || 'Regional Medical Center'}
-                                                    </h4>
-                                                    <div className="flex items-center text-sm text-surface-500 mt-1 font-medium">
-                                                        <Clock className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                                                        {referral.estimatedTravelTime || '45 mins travel'}
+                                    {recentReferrals.map((referral, index) => {
+                                        const scoreVal = referral.score;
+                                        const scoreDisplay = scoreVal != null && !isNaN(Number(scoreVal))
+                                            ? (Number(scoreVal) === Math.round(scoreVal) ? Math.round(scoreVal) : Number(scoreVal).toFixed(1))
+                                            : 'N/A';
+                                        const travelDisplay = referral.travelTime != null
+                                            ? `${referral.travelTime} mins`
+                                            : (referral.estimatedTravelTime || '—');
+                                        return (
+                                            <div key={referral.id ?? index} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-surface-50/50 transition-colors gap-4">
+                                                <div className="flex items-center gap-4">
+                                                    {/* Severity Score Indicator */}
+                                                    <div className="w-12 h-12 rounded-full border-[3px] border-surface-200 flex items-center justify-center font-bold text-xs text-surface-700 font-display shadow-sm bg-white shrink-0 min-w-[3rem]">
+                                                        {scoreDisplay}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-bold text-surface-900 text-base flex items-center gap-2">
+                                                            <Building2 className="w-4 h-4 text-surface-400 shrink-0" />
+                                                            {referral.assignedHospital || 'Regional Medical Center'}
+                                                        </h4>
+                                                        <div className="flex items-center text-sm text-surface-500 mt-1 font-medium">
+                                                            <Clock className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                                                            {travelDisplay}
+                                                        </div>
                                                     </div>
                                                 </div>
+                                                <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                                                    {referral.priorityLevel && (
+                                                        <span className={getPriorityColor(referral.priorityLevel)}>
+                                                            {referral.priorityLevel}
+                                                        </span>
+                                                    )}
+                                                    <Badge variant={referral.status === 'Accepted' ? 'success' : 'warning'} className="px-3 py-1">
+                                                        {referral.status}
+                                                    </Badge>
+                                                </div>
                                             </div>
-                                            <Badge variant={referral.status === 'Accepted' ? 'success' : 'warning'} className="self-start sm:self-auto px-3 py-1">
-                                                {referral.status}
-                                            </Badge>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <div className="p-12 text-center flex flex-col items-center">

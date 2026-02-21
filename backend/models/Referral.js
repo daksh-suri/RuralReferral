@@ -11,7 +11,9 @@ const referralSchema = new mongoose.Schema({
     travelTime: { type: Number, required: true },
     status: { type: String, enum: ['Pending', 'Accepted'], default: 'Pending' },
     autoAcceptAt: { type: Date, required: true },
-    acceptedAt: { type: Date }
+    acceptedAt: { type: Date },
+    priorityIndex: { type: Number },
+    priorityLevel: { type: String, enum: ['HIGH', 'MEDIUM', 'LOW'] }
 }, { timestamps: true });
 
 referralSchema.index({ status: 1, autoAcceptAt: 1 });

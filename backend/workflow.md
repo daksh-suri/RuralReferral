@@ -55,16 +55,16 @@ sequenceDiagram
 
 ### The Scoring Algorithm Deep Dive
 When the frontend sends urgency (`High`, `Medium`, or `Low`), the backend converts it to an integer (3, 2, or 1). 
-The formula applied to *every* hospital is:
+Each hospital gets a **weighted composite score** (0–100) from four sub-scores:
 
-`Score = (5 * Urgency) - (1 * TravelTime) + (4 * CapacityRatio) - (2 * LoadFactor)`
+`Score = (TimeScore × 40%) + (CapacityScore × 35%) + (LoadScore × 15%) + (UrgencyScore × 10%)`
 
-*   **Urgency:** Higher urgency heavily inflates the score (`+5` multiplier).
-*   **Travel Time:** Calculated dynamically by Dijkstra based on the doctor's registered `location`. Longer drives reduce the score.
-*   **Capacity Ratio:** The percentage of beds available. More available beds increase the score.
-*   **Load Factor:** How busy the hospital is. Busier hospitals reduce the score.
+*   **Travel Time (40% weight):** `TimeScore = max(0, 100 - travelMinutes × 1.5)`. Calculated by Dijkstra from the doctor's `location`. Longer drives reduce the score.
+*   **Capacity (35% weight):** `CapacityScore = round((availableBeds / totalBeds) × 100)`. More available beds increase the score.
+*   **Load Factor (15% weight):** `LoadScore = max(0, 100 - round(loadFactor×100))`. Busier hospitals reduce the score.
+*   **Urgency (10% weight):** High=100, Medium=70, Low=40.
 
-The hospital that yields the **highest final score** is selected.
+The hospital that yields the **highest final score** (clamped 0–100) is selected.
 
 ---
 

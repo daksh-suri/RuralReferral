@@ -11,13 +11,14 @@ export const calculateReferralScore = ({ travelTime, availableCapacity, totalCap
         ? Math.round((availableCapacity / totalCapacity) * 100)
         : 0;
     const loadScore = Math.max(0, 100 - Math.round(loadFactor * 100));
-    const urgencyScore = urgencyLevel === 3 ? 100 : urgencyLevel === 2 ? 70 : 40;
 
-    const rawScore =
-        (timeScore * 0.4) +
-        (capacityScore * 0.35) +
-        (loadScore * 0.15) +
-        (urgencyScore * 0.1);
+    const coreScore =
+        (timeScore * 0.30) +
+        (capacityScore * 0.25) +
+        (loadScore * 0.10);
 
-    return Math.max(0, Math.min(100, Math.round(rawScore)));
+    const urgencyBonus = urgencyLevel === 3 ? 25 : urgencyLevel === 2 ? 15 : 5;
+    const finalScore = coreScore + urgencyBonus;
+
+    return Math.max(0, Math.min(100, Math.round(finalScore)));
 };

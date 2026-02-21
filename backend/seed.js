@@ -5,6 +5,7 @@ import User from './models/User.js';
 import Referral from './models/Referral.js';
 import Hospital from './models/Hospital.js';
 import { hospitals } from './utils/hospitals.js';
+import { calculatePriorityIndex } from './utils/priorityIndex.js';
 
 dotenv.config();
 
@@ -47,6 +48,9 @@ async function seedDatabase() {
         console.log('Doctors created! (Logins: 1111111111 / password123 and 2222222222 / password123)');
 
         console.log('Creating Sample Referrals...');
+        const p1 = calculatePriorityIndex({ vitals: 'BP 160/100, HR 120', age: 65 });
+        const p2 = calculatePriorityIndex({ vitals: 'Temp 103F', age: 12, symptomSeverity: 6 });
+
         const ref1 = new Referral({
             userId: doc1._id,
             patientAge: 65,
@@ -58,7 +62,9 @@ async function seedDatabase() {
             travelTime: 45,
             status: 'Accepted',
             autoAcceptAt: new Date(Date.now() - 10000),
-            acceptedAt: new Date(Date.now() - 5000)
+            acceptedAt: new Date(Date.now() - 5000),
+            priorityIndex: p1.priorityIndex,
+            priorityLevel: p1.priorityLevel
         });
 
         const ref2 = new Referral({
@@ -71,7 +77,9 @@ async function seedDatabase() {
             score: 67,
             travelTime: 25,
             status: 'Pending',
-            autoAcceptAt: new Date(Date.now() + 60000)
+            autoAcceptAt: new Date(Date.now() + 60000),
+            priorityIndex: p2.priorityIndex,
+            priorityLevel: p2.priorityLevel
         });
 
         await ref1.save();

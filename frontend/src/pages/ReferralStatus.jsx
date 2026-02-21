@@ -4,6 +4,12 @@ import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
 import { Search, MapPin, Clock, Building2, ChevronRight, Stethoscope, AlertCircle, FileText, X, Printer, User, HeartPulse, Sparkles } from 'lucide-react';
 
+const getPriorityColor = (priorityLevel) => {
+    if (priorityLevel === "HIGH") return "text-red-600 font-bold";
+    if (priorityLevel === "MEDIUM") return "text-orange-500 font-bold";
+    return "text-green-600 font-bold";
+};
+
 const ReferralStatus = () => {
     const [referrals, setReferrals] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -13,14 +19,8 @@ const ReferralStatus = () => {
     useEffect(() => {
         const fetchReferrals = async () => {
             try {
-                await getReferrals(); // Ensure api fires for demo completeness
-                const localData = JSON.parse(localStorage.getItem('referrals')) || [];
-                if (localData.length > 0) {
-                    setReferrals(localData);
-                } else {
-                    const data = await getReferrals();
-                    setReferrals(data);
-                }
+                const data = await getReferrals();
+                setReferrals(data || []);
             } catch (error) {
                 console.error("Failed to load referrals", error);
             } finally {
@@ -150,6 +150,11 @@ const ReferralStatus = () => {
                                     </div>
 
                                     <div className="flex flex-col items-end gap-2 ml-4">
+                                        {referral.priorityLevel && (
+                                            <span className={getPriorityColor(referral.priorityLevel)}>
+                                                {referral.priorityLevel} {referral.priorityIndex != null && `(${referral.priorityIndex})`}
+                                            </span>
+                                        )}
                                         <Badge variant={
                                             referral.status === 'Escalated' ? 'danger' :
                                                 referral.status === 'Closed Local - Treated' ? 'success' :
@@ -213,16 +218,26 @@ const ReferralStatus = () => {
                                     <p className="text-xs font-bold text-surface-400 uppercase tracking-widest mb-1">Generated</p>
                                     <p className="font-semibold text-surface-900">{selectedReferral.meta.date} at {selectedReferral.meta.time}</p>
                                 </div>
-                                <div className="text-right">
-                                    <p className="text-xs font-bold text-surface-400 uppercase tracking-widest mb-1">Current Status</p>
-                                    <Badge variant={
-                                        selectedReferral.status === 'Escalated' ? 'danger' :
-                                            selectedReferral.status === 'Closed Local - Treated' ? 'success' :
-                                                selectedReferral.status === 'Closed Local - Admitted' ? 'outline' :
-                                                    selectedReferral.status === 'Pending' ? 'warning' : 'primary'
-                                    } className="px-3">
-                                        {selectedReferral.status || 'Pending'}
-                                    </Badge>
+                                <div className="flex flex-wrap items-center gap-3 text-right">
+                                    {selectedReferral.priorityLevel && (
+                                        <div>
+                                            <p className="text-[11px] font-bold text-surface-400 uppercase tracking-widest mb-1">Priority Index</p>
+                                            <span className={getPriorityColor(selectedReferral.priorityLevel)}>
+                                                {selectedReferral.priorityLevel} {selectedReferral.priorityIndex != null ? `(${selectedReferral.priorityIndex})` : ''}
+                                            </span>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <p className="text-xs font-bold text-surface-400 uppercase tracking-widest mb-1">Current Status</p>
+                                        <Badge variant={
+                                            selectedReferral.status === 'Escalated' ? 'danger' :
+                                                selectedReferral.status === 'Closed Local - Treated' ? 'success' :
+                                                    selectedReferral.status === 'Closed Local - Admitted' ? 'outline' :
+                                                        selectedReferral.status === 'Pending' ? 'warning' : 'primary'
+                                        } className="px-3">
+                                            {selectedReferral.status || 'Pending'}
+                                        </Badge>
+                                    </div>
                                 </div>
                             </div>
 
@@ -313,8 +328,8 @@ const ReferralStatus = () => {
                                         </span>
                                         <span className="text-sm font-bold text-surface-400">/ 100</span>
                                     </div>
-                                    <p className={`text-sm font-bold mt-2 flex items-center gap-1.5 ${selectedReferral.urgency.color.split(' ')[1]}`}>
-                                        <selectedReferral.urgency.icon className="w-4 h-4" /> {selectedReferral.urgency.label}
+                                    <p className={`text-sm font-bold mt-2 flex items-center gap-1.5 ${selectedReferral.urgency?.color?.split(' ')[1] || 'text-surface-700'}`}>
+                                        {selectedReferral.urgency?.icon && (() => { const Ic = selectedReferral.urgency.icon; return <Ic className="w-4 h-4" />; })()} {selectedReferral.urgency?.label || '—'}
                                     </p>
                                 </div>
                                 <div className="border border-surface-100 rounded-2xl p-5">

@@ -137,7 +137,11 @@ const CreateReferral = () => {
         if (!createdReferral) return;
 
         try {
-            // Only now do we write to the database with the doctor's chosen status
+            // Parse travelTime: may be "45 mins" string or number
+            const travelTimeNum = typeof createdReferral.travelTime === 'number'
+                ? createdReferral.travelTime
+                : parseInt(String(createdReferral.travelTime).replace(/\D/g, ''), 10) || 0;
+
             await createReferral({
                 patientAge: parseInt(createdReferral.patientAge, 10),
                 symptoms: createdReferral.symptoms,
@@ -146,13 +150,13 @@ const CreateReferral = () => {
                 status,
                 assignedHospital: createdReferral.assignedHospital,
                 score: createdReferral.score,
-                travelTime: createdReferral.travelTime
+                travelTime: travelTimeNum
             });
+            navigate('/referrals');
         } catch (err) {
             console.error('Failed to save referral', err);
+            setError(err.response?.data?.message || 'Failed to save referral. Please try again.');
         }
-
-        navigate('/referrals');
     };
 
     if (referralResult && createdReferral) {
@@ -211,6 +215,13 @@ const CreateReferral = () => {
                                 </div>
                             </div>
                         </div>
+
+                        {error && (
+                            <div className="p-4 rounded-xl bg-red-50 border border-red-100 text-sm text-red-700 font-medium flex items-start gap-3 mb-6">
+                                <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                                {error}
+                            </div>
+                        )}
 
                         {/* AI Insight Section */}
                         {referralResult.aiInsight && (
