@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
 import { Badge } from '../components/ui/Badge';
 import { createReferral, computeReferral } from '../api/referrals';
-import { generateClinicalInsight } from '../lib/triageAI';
+import { generateClinicalInsight } from '../lib/megaLLM';
 import { Activity, User, HeartPulse, Building2, MapPin, CheckCircle2, Navigation, Stethoscope, AlertTriangle, Sparkles, Home } from 'lucide-react';
 
 const CreateReferral = () => {
@@ -95,7 +95,7 @@ const CreateReferral = () => {
             let storedReferrals = JSON.parse(localStorage.getItem('referrals')) || [];
 
             const now = new Date();
-            const aiAssessment = generateClinicalInsight({
+            const insight = await generateClinicalInsight({
                 patientAge: patientInfo.age,
                 symptoms: patientInfo.symptoms,
                 bp: patientInfo.bp,
@@ -118,8 +118,11 @@ const CreateReferral = () => {
                 travelTime: `${travelTime} mins`,
                 score: data.score,
                 status: 'Pending Decision',
-                aiInsight: aiAssessment.text
+                aiInsight: insight
             };
+
+            storedReferrals.push(newReferralRecord);
+            localStorage.setItem('referrals', JSON.stringify(storedReferrals));
 
             setCreatedReferral(newReferralRecord);
             setReferralResult({ ...data, hospital: hosp, score: data.score, travelTime: newReferralRecord.travelTime, aiInsight: newReferralRecord.aiInsight });
