@@ -9,7 +9,11 @@ const referralSchema = new mongoose.Schema({
     assignedHospital: { type: String, required: true },
     score: { type: Number, required: true },
     travelTime: { type: Number, required: true },
-    status: { type: String, enum: ['Pending', 'Accepted'], default: 'Pending' }
-});
+    status: { type: String, enum: ['Pending', 'Accepted'], default: 'Pending' },
+    autoAcceptAt: { type: Date, required: true },
+    acceptedAt: { type: Date }
+}, { timestamps: true });
+
+referralSchema.index({ status: 1, autoAcceptAt: 1 });
 
 export default mongoose.model('Referral', referralSchema);

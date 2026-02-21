@@ -6,12 +6,15 @@ import User from '../models/User.js';
 
 const router = express.Router();
 
-const validateSignup = [
+export const validateSignup = [
+    body('name').trim().notEmpty().withMessage('Name is required'),
+    body('clinicName').trim().notEmpty().withMessage('Clinic name is required'),
+    body('location').trim().notEmpty().withMessage('Location is required'),
     body('contact').notEmpty().withMessage('Contact is required').isLength({ min: 5 }).withMessage('Contact must be at least 5 characters'),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
 ];
 
-const validateLogin = [
+export const validateLogin = [
     body('contact').notEmpty().withMessage('Contact is required').isLength({ min: 5 }).withMessage('Contact must be at least 5 characters'),
     body('password').notEmpty().withMessage('Password is required')
 ];
@@ -56,10 +59,14 @@ router.post('/login', validateLogin, async (req, res, next) => {
         if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
         const payload = { userId: user._id, location: user.location };
-        const token = jwt.sign(payload, process.env.JWT_SECRET || 'supersecretjwtkey', { expiresIn: '1d' });
+        if (!process.env.JWT_SECRET) {
+            throw new Error("JWT_SECRET missing");
+        }
+        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
 
         res.json({ token });
     } catch (error) {
+        console.error("Login attempt failed:", error.message);
         res.status(500).json({ message: 'Server Error' });
     }
 });

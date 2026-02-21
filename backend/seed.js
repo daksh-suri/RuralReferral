@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import User from './models/User.js';
 import Referral from './models/Referral.js';
+import Hospital from './models/Hospital.js';
+import { hospitals } from './utils/hospitals.js';
 
 dotenv.config();
 
@@ -17,6 +19,7 @@ async function seedDatabase() {
         console.log('Clearing existing data...');
         await User.deleteMany({});
         await Referral.deleteMany({});
+        await Hospital.deleteMany({});
         console.log('Database cleared.');
 
         console.log('Creating Test Doctors...');
@@ -51,9 +54,11 @@ async function seedDatabase() {
             vitals: 'HR 120, BP 160/100',
             urgency: 'High',
             assignedHospital: 'City General Hospital',
-            score: 1.2,
+            score: 88,
             travelTime: 45,
-            status: 'Accepted'
+            status: 'Accepted',
+            autoAcceptAt: new Date(Date.now() - 10000),
+            acceptedAt: new Date(Date.now() - 5000)
         });
 
         const ref2 = new Referral({
@@ -62,15 +67,31 @@ async function seedDatabase() {
             symptoms: 'High Fever, Vomiting',
             vitals: 'Temp 103F',
             urgency: 'Medium',
-            assignedHospital: 'North District',
-            score: -28,
-            travelTime: 40,
-            status: 'Pending'
+            assignedHospital: 'Eastern Specialist',
+            score: 67,
+            travelTime: 25,
+            status: 'Pending',
+            autoAcceptAt: new Date(Date.now() + 60000)
         });
 
         await ref1.save();
         await ref2.save();
         console.log('Referrals created!');
+
+        console.log('Creating Hospitals from static list...');
+        for (const hosp of hospitals) {
+            const newHosp = new Hospital({
+                name: hosp.name,
+                locationNode: hosp.location,
+                totalCapacity: hosp.totalCapacity,
+                availableCapacity: hosp.availableCapacity,
+                capacityRatio: hosp.capacityRatio,
+                loadFactor: hosp.loadFactor,
+                specialties: []
+            });
+            await newHosp.save();
+        }
+        console.log('Hospitals created!');
 
         console.log('Seeding COMPLETE! You can now start the server.');
         process.exit(0);

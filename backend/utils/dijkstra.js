@@ -1,4 +1,13 @@
+import { performance } from 'perf_hooks';
+
+export let routingMetrics = {
+    executionsToday: 0,
+    lastComputationMs: 0
+};
+
 export function calculateShortestPath(graph, startNode) {
+    const startTime = performance.now();
+
     let distances = {};
     let visited = new Set();
     let nodes = Object.keys(graph);
@@ -11,7 +20,7 @@ export function calculateShortestPath(graph, startNode) {
         distances[startNode] = 0;
         for (let node of nodes) {
             if (node !== startNode) {
-                distances[node] = 30; // default 30 mins travel time for unknown locations
+                distances[node] = 30;
             }
         }
     } else {
@@ -45,6 +54,10 @@ export function calculateShortestPath(graph, startNode) {
             }
         }
     }
+
+    const endTime = performance.now();
+    routingMetrics.lastComputationMs = parseFloat((endTime - startTime).toFixed(2));
+    routingMetrics.executionsToday++;
 
     return distances;
 }

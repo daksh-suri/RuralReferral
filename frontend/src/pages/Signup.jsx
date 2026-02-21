@@ -8,7 +8,7 @@ import { signup } from '../api/auth';
 const Signup = () => {
     const [formData, setFormData] = useState({
         name: '',
-        clinicName: '',
+        clinic: '',
         location: '',
         contact: '',
         password: ''
@@ -29,7 +29,14 @@ const Signup = () => {
 
         try {
             if (formData.name && formData.contact && formData.password.length >= 6) {
-                await signup(formData);
+                const payload = {
+                    name: formData.name,
+                    clinicName: formData.clinic,
+                    location: formData.location,
+                    contact: formData.contact,
+                    password: formData.password
+                };
+                await signup(payload);
                 setIsSuccess(true);
                 setTimeout(() => {
                     navigate('/login');
@@ -39,7 +46,8 @@ const Signup = () => {
             }
             setIsLoading(false);
         } catch (err) {
-            setError('Registration failed. Please try again.');
+            const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Registration failed. Please try again.';
+            setError(errorMsg);
             setIsLoading(false);
         }
     };
@@ -162,20 +170,28 @@ const Signup = () => {
                                     <div>
                                         <Label htmlFor="clinic">Primary Facility</Label>
                                         <Input
-                                            id="clinic" name="clinicName" type="text"
+                                            id="clinic" name="clinic" type="text"
                                             placeholder="Rural CHC"
-                                            value={formData.clinicName} onChange={handleChange}
+                                            value={formData.clinic} onChange={handleChange}
                                             required
                                         />
                                     </div>
                                     <div>
                                         <Label htmlFor="location">District / Block</Label>
-                                        <Input
-                                            id="location" name="location" type="text"
-                                            placeholder="Sector 4"
+                                        <select
+                                            id="location" name="location"
+                                            className="flex h-12 w-full items-center justify-between rounded-xl border border-surface-200 bg-white px-4 py-3 text-sm text-surface-900 shadow-sm transition-all placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500 hover:border-surface-300"
                                             value={formData.location} onChange={handleChange}
                                             required
-                                        />
+                                        >
+                                            <option value="" disabled>Select Location</option>
+                                            <option value="Village A">Village A</option>
+                                            <option value="Village B">Village B</option>
+                                            <option value="City Center">City Center</option>
+                                            <option value="North District">North District</option>
+                                            <option value="East District">East District</option>
+                                            <option value="West District">West District</option>
+                                        </select>
                                     </div>
                                 </div>
 

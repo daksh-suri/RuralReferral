@@ -1,20 +1,18 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import Referral from '../models/Referral.js';
+import Hospital from '../models/Hospital.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
-import { hospitals, graph } from '../utils/hospitals.js';
+import { graph } from '../utils/hospitals.js';
 import { calculateShortestPath } from '../utils/dijkstra.js';
+import { calculateReferralScore } from '../utils/referralScoring.js';
 
 const router = express.Router();
 
-const getUrgencyLevel = (urgency) => {
-    if (urgency === 'High') return 3;
-    if (urgency === 'Medium') return 2;
-    return 1;
-};
-
-const validateReferral = [
-    body('patientAge').isNumeric().withMessage('patientAge must be a number'),
+export const validateReferral = [
+    body('patientAge')
+        .isInt({ min: 0, max: 120 })
+        .withMessage('patientAge must be an integer between 0 and 120'),
     body('urgency').isIn(['High', 'Medium', 'Low']).withMessage('urgency must be High, Medium, or Low'),
     body('symptoms').notEmpty().withMessage('symptoms are required'),
     body('vitals').notEmpty().withMessage('vitals are required')
@@ -28,32 +26,40 @@ router.post('/', authMiddleware, validateReferral, async (req, res, next) => {
         }
 
         const { patientAge, symptoms, vitals, urgency } = req.body;
-        const urgencyLevel = getUrgencyLevel(urgency);
 
         const userLocation = req.user.location;
 
+        if (!graph[userLocation]) {
+            return res.status(400).json({ error: "Invalid location node" });
+        }
+
         const distances = calculateShortestPath(graph, userLocation);
+        const dbHospitals = await Hospital.find({});
 
         let bestHospital = null;
         let bestScore = -Infinity;
         let selectedTravelTime = 0;
 
-        for (const hospital of hospitals) {
+        for (const hospital of dbHospitals) {
             if (hospital.availableCapacity === 0) continue;
 
-            const travelTime = distances[hospital.location] || 45;
+            const rawTravelTime = distances[hospital.locationNode];
+            if (!Number.isFinite(rawTravelTime)) {
+                return res.status(500).json({ error: "Routing graph incomplete for this location" });
+            }
 
-
-            // Original Scoring Logic calculation 
-            let rawScore = (5 * urgencyLevel) - (1 * travelTime) + (4 * hospital.capacityRatio) - (2 * hospital.loadFactor);
-
-            // Defensive validation: ensure score is between 0 and 100
-            const score = Math.max(0, Math.min(100, Math.round(rawScore)));
+            const score = calculateReferralScore({
+                travelTime: rawTravelTime,
+                availableCapacity: hospital.availableCapacity,
+                totalCapacity: hospital.totalCapacity,
+                loadFactor: hospital.loadFactor,
+                urgency
+            });
 
             if (score > bestScore) {
                 bestScore = score;
                 bestHospital = hospital;
-                selectedTravelTime = travelTime;
+                selectedTravelTime = rawTravelTime;
             }
         }
 
@@ -61,26 +67,25 @@ router.post('/', authMiddleware, validateReferral, async (req, res, next) => {
             return res.status(400).json({ message: 'No available hospitals found' });
         }
 
+        const AUTO_ACCEPT_MS = process.env.AUTO_ACCEPT_MS || 5000;
+
         const referral = new Referral({
             userId: req.user.userId,
-            patientAge,
+            patientAge: Number(patientAge),
             symptoms,
             vitals,
             urgency,
             assignedHospital: bestHospital.name,
             score: bestScore,
             travelTime: selectedTravelTime,
-            status: 'Pending'
+            status: 'Pending',
+            autoAcceptAt: new Date(Date.now() + Number(AUTO_ACCEPT_MS))
         });
 
         await referral.save();
 
-        setTimeout(async () => {
-            referral.status = 'Accepted';
-            await referral.save();
-        }, 5000);
-
         res.status(201).json({
+            referralId: referral._id,
             assignedHospital: bestHospital.name,
             score: bestScore,
             travelTime: selectedTravelTime,
@@ -93,13 +98,17 @@ router.post('/', authMiddleware, validateReferral, async (req, res, next) => {
 
 router.get('/', authMiddleware, async (req, res) => {
     try {
-        const referrals = await Referral.find({ userId: req.user.userId });
+        const referrals = await Referral.find({ userId: req.user.userId }).sort({ createdAt: -1 });
 
         const response = referrals.map(r => ({
+            id: r._id,
             assignedHospital: r.assignedHospital,
             score: r.score,
             travelTime: r.travelTime,
-            status: r.status
+            status: r.status,
+            urgency: r.urgency,
+            createdAt: r.createdAt,
+            acceptedAt: r.acceptedAt
         }));
 
         res.json(response);

@@ -4,7 +4,8 @@ import { Card, CardContent } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { getReferrals } from '../api/referrals';
-import { Activity, Clock, CheckCircle2, AlertCircle, ArrowRight, PlusCircle, Building2, MapPin } from 'lucide-react';
+import { getRoutingMetrics } from '../api/metrics';
+import { Activity, Clock, CheckCircle2, AlertCircle, ArrowRight, PlusCircle, Building2, MapPin, Network, GitGraph, Zap, Cpu } from 'lucide-react';
 
 const Dashboard = () => {
     const navigate = useNavigate();
@@ -15,12 +16,16 @@ const Dashboard = () => {
         avgTravel: 0
     });
     const [recentReferrals, setRecentReferrals] = useState([]);
+    const [routingMetrics, setRoutingMetrics] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const fetchDashboardData = async () => {
             try {
-                const data = await getReferrals();
+                const [data, metricsData] = await Promise.all([
+                    getReferrals(),
+                    getRoutingMetrics().catch(() => null)
+                ]);
 
                 // Calculate Mock Stats based on fetched data
                 const pendingCount = data.filter(r => r.status === 'Pending').length;
@@ -44,6 +49,7 @@ const Dashboard = () => {
 
                 // Top 3 most recent
                 setRecentReferrals(data.slice(0, 3));
+                setRoutingMetrics(metricsData);
             } catch (error) {
                 console.error("Failed to load dashboard data", error);
             } finally {
@@ -154,16 +160,16 @@ const Dashboard = () => {
                                             <div className="flex items-center gap-4">
                                                 {/* Severity Score Indicator */}
                                                 <div className="w-12 h-12 rounded-full border-[3px] border-surface-200 flex items-center justify-center font-bold text-surface-700 font-display shadow-sm bg-white shrink-0">
-                                                    {referral.severityScore || Math.floor(Math.random() * 40) + 50}
+                                                    {referral.score}
                                                 </div>
                                                 <div>
                                                     <h4 className="font-bold text-surface-900 text-base flex items-center gap-2">
                                                         <Building2 className="w-4 h-4 text-surface-400 shrink-0" />
-                                                        {referral.assignedHospital || 'Regional Medical Center'}
+                                                        {referral.assignedHospital}
                                                     </h4>
                                                     <div className="flex items-center text-sm text-surface-500 mt-1 font-medium">
                                                         <Clock className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                                                        {referral.estimatedTravelTime || '45 mins travel'}
+                                                        {referral.travelTime} mins travel
                                                     </div>
                                                 </div>
                                             </div>
@@ -188,32 +194,45 @@ const Dashboard = () => {
 
                 {/* Info Panel / Fast Actions */}
                 <div className="space-y-4">
-                    <h2 className="text-lg font-bold text-surface-900 font-display">System Status</h2>
+                    <h2 className="text-lg font-bold text-surface-900 font-display flex items-center gap-2">
+                        <Cpu className="w-5 h-5 text-brand-600" />
+                        Routing Engine Metrics
+                    </h2>
                     <Card className="bg-surface-900 text-white border-none shadow-clinical overflow-hidden rounded-2xl relative">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-brand-500/20 rounded-full blur-2xl z-0"></div>
-                        <CardContent className="p-6 relative z-10 space-y-6">
-
-                            <div>
-                                <div className="flex items-center gap-2 text-brand-300 font-semibold text-sm tracking-wide mb-1">
-                                    <div className="w-2 h-2 rounded-full bg-brand-400 animate-pulse"></div>
-                                    Network Active
+                        <CardContent className="p-6 relative z-10 space-y-5">
+                            {!routingMetrics ? (
+                                <div className="text-center py-8">
+                                    <AlertCircle className="w-8 h-8 text-surface-500 mx-auto mb-3" />
+                                    <p className="text-surface-400 font-medium text-sm">Metrics unavailable</p>
                                 </div>
-                                <h3 className="text-xl font-display font-bold">Algorithms Online</h3>
-                            </div>
+                            ) : (
+                                <>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                                            <div className="text-surface-400 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5"><Network className="w-3.5 h-3.5" /> Graph Nodes</div>
+                                            <div className="text-2xl font-bold font-display">{routingMetrics.nodes}</div>
+                                        </div>
+                                        <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                                            <div className="text-surface-400 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5"><GitGraph className="w-3.5 h-3.5" /> Graph Edges</div>
+                                            <div className="text-2xl font-bold font-display">{routingMetrics.edges}</div>
+                                        </div>
+                                    </div>
 
-                            <p className="text-surface-300 text-sm leading-relaxed font-medium">
-                                The optimizer is currently analyzing traffic patterns and ER capacities across 4 regional districts.
-                            </p>
+                                    <div className="bg-white/5 rounded-xl p-4 border border-white/10">
+                                        <div className="text-surface-400 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5" /> Last Computation</div>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-2xl font-bold font-display text-brand-300">{routingMetrics.lastComputationMs}</span>
+                                            <span className="text-surface-400 text-sm font-semibold">ms</span>
+                                        </div>
+                                    </div>
 
-                            <div className="bg-white/10 rounded-xl p-4 border border-white/10">
-                                <div className="flex justify-between items-center text-sm mb-2">
-                                    <span className="text-surface-300 font-medium">Regional ER Capacity</span>
-                                    <span className="font-bold text-white">78%</span>
-                                </div>
-                                <div className="w-full bg-surface-800 rounded-full h-1.5 overflow-hidden">
-                                    <div className="bg-brand-400 h-1.5 rounded-full" style={{ width: '78%' }}></div>
-                                </div>
-                            </div>
+                                    <div className="flex justify-between items-center text-sm pt-2 border-t border-white/10">
+                                        <span className="text-surface-400 font-medium">Dijkstra Executions Today</span>
+                                        <span className="font-bold bg-brand-500/20 text-brand-200 px-2 py-0.5 rounded-md border border-brand-500/30">{routingMetrics.executionsToday}</span>
+                                    </div>
+                                </>
+                            )}
                         </CardContent>
                     </Card>
                 </div>

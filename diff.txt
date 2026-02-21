@@ -1,0 +1,426 @@
+diff --git a/backend/models/Referral.js b/backend/models/Referral.js
+index aab2c13..c4a7d73 100644
+--- a/backend/models/Referral.js
++++ b/backend/models/Referral.js
+@@ -9,7 +9,11 @@ const referralSchema = new mongoose.Schema({
+     assignedHospital: { type: String, required: true },
+     score: { type: Number, required: true },
+     travelTime: { type: Number, required: true },
+-    status: { type: String, enum: ['Pending', 'Accepted'], default: 'Pending' }
+-});
++    status: { type: String, enum: ['Pending', 'Accepted'], default: 'Pending' },
++    autoAcceptAt: { type: Date, required: true },
++    acceptedAt: { type: Date }
++}, { timestamps: true });
++
++referralSchema.index({ status: 1, autoAcceptAt: 1 });
+ 
+ export default mongoose.model('Referral', referralSchema);
+diff --git a/backend/package.json b/backend/package.json
+index 243d72c..df9ddf1 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -7,7 +7,8 @@
+   "scripts": {
+     "start": "nodemon server.js",
+     "dev": "nodemon server.js",
+-    "seed": "node seed.js"
++    "seed": "node seed.js",
++    "test": "node --test tests/*.test.js"
+   },
+   "dependencies": {
+     "bcryptjs": "^2.4.3",
+@@ -19,4 +20,4 @@
+     "mongoose": "^8.3.2",
+     "morgan": "^1.10.1"
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/backend/routes/auth.js b/backend/routes/auth.js
+index 1802bb6..02ed097 100644
+--- a/backend/routes/auth.js
++++ b/backend/routes/auth.js
+@@ -6,12 +6,15 @@ import User from '../models/User.js';
+ 
+ const router = express.Router();
+ 
+-const validateSignup = [
++export const validateSignup = [
++    body('name').trim().notEmpty().withMessage('Name is required'),
++    body('clinicName').trim().notEmpty().withMessage('Clinic name is required'),
++    body('location').trim().notEmpty().withMessage('Location is required'),
+     body('contact').notEmpty().withMessage('Contact is required').isLength({ min: 5 }).withMessage('Contact must be at least 5 characters'),
+     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+ ];
+ 
+-const validateLogin = [
++export const validateLogin = [
+     body('contact').notEmpty().withMessage('Contact is required').isLength({ min: 5 }).withMessage('Contact must be at least 5 characters'),
+     body('password').notEmpty().withMessage('Password is required')
+ ];
+diff --git a/backend/routes/referrals.js b/backend/routes/referrals.js
+index 912d633..7aed435 100644
+--- a/backend/routes/referrals.js
++++ b/backend/routes/referrals.js
+@@ -4,17 +4,14 @@ import Referral from '../models/Referral.js';
+ import { authMiddleware } from '../middleware/authMiddleware.js';
+ import { hospitals, graph } from '../utils/hospitals.js';
+ import { calculateShortestPath } from '../utils/dijkstra.js';
++import { calculateReferralScore } from '../utils/referralScoring.js';
+ 
+ const router = express.Router();
+ 
+-const getUrgencyLevel = (urgency) => {
+-    if (urgency === 'High') return 3;
+-    if (urgency === 'Medium') return 2;
+-    return 1;
+-};
+-
+-const validateReferral = [
+-    body('patientAge').isNumeric().withMessage('patientAge must be a number'),
++export const validateReferral = [
++    body('patientAge')
++        .isInt({ min: 0, max: 120 })
++        .withMessage('patientAge must be an integer between 0 and 120'),
+     body('urgency').isIn(['High', 'Medium', 'Low']).withMessage('urgency must be High, Medium, or Low'),
+     body('symptoms').notEmpty().withMessage('symptoms are required'),
+     body('vitals').notEmpty().withMessage('vitals are required')
+@@ -28,7 +25,6 @@ router.post('/', authMiddleware, validateReferral, async (req, res, next) => {
+         }
+ 
+         const { patientAge, symptoms, vitals, urgency } = req.body;
+-        const urgencyLevel = getUrgencyLevel(urgency);
+ 
+         const userLocation = req.user.location;
+ 
+@@ -41,14 +37,16 @@ router.post('/', authMiddleware, validateReferral, async (req, res, next) => {
+         for (const hospital of hospitals) {
+             if (hospital.availableCapacity === 0) continue;
+ 
+-            const travelTime = distances[hospital.location] || 45;
+-
+-
+-            // Original Scoring Logic calculation 
+-            let rawScore = (5 * urgencyLevel) - (1 * travelTime) + (4 * hospital.capacityRatio) - (2 * hospital.loadFactor);
++            const rawTravelTime = distances[hospital.location];
++            const travelTime = Number.isFinite(rawTravelTime) ? rawTravelTime : 45;
+ 
+-            // Defensive validation: ensure score is between 0 and 100
+-            const score = Math.max(0, Math.min(100, Math.round(rawScore)));
++            const score = calculateReferralScore({
++                travelTime,
++                availableCapacity: hospital.availableCapacity,
++                totalCapacity: hospital.totalCapacity,
++                loadFactor: hospital.loadFactor,
++                urgency
++            });
+ 
+             if (score > bestScore) {
+                 bestScore = score;
+@@ -63,24 +61,21 @@ router.post('/', authMiddleware, validateReferral, async (req, res, next) => {
+ 
+         const referral = new Referral({
+             userId: req.user.userId,
+-            patientAge,
++            patientAge: Number(patientAge),
+             symptoms,
+             vitals,
+             urgency,
+             assignedHospital: bestHospital.name,
+             score: bestScore,
+             travelTime: selectedTravelTime,
+-            status: 'Pending'
++            status: 'Pending',
++            autoAcceptAt: new Date(Date.now() + 5000)
+         });
+ 
+         await referral.save();
+ 
+-        setTimeout(async () => {
+-            referral.status = 'Accepted';
+-            await referral.save();
+-        }, 5000);
+-
+         res.status(201).json({
++            referralId: referral._id,
+             assignedHospital: bestHospital.name,
+             score: bestScore,
+             travelTime: selectedTravelTime,
+@@ -93,13 +88,17 @@ router.post('/', authMiddleware, validateReferral, async (req, res, next) => {
+ 
+ router.get('/', authMiddleware, async (req, res) => {
+     try {
+-        const referrals = await Referral.find({ userId: req.user.userId });
++        const referrals = await Referral.find({ userId: req.user.userId }).sort({ createdAt: -1 });
+ 
+         const response = referrals.map(r => ({
++            id: r._id,
+             assignedHospital: r.assignedHospital,
+             score: r.score,
+             travelTime: r.travelTime,
+-            status: r.status
++            status: r.status,
++            urgency: r.urgency,
++            createdAt: r.createdAt,
++            acceptedAt: r.acceptedAt
+         }));
+ 
+         res.json(response);
+diff --git a/backend/seed.js b/backend/seed.js
+index dccea10..c8d42ba 100644
+--- a/backend/seed.js
++++ b/backend/seed.js
+@@ -51,9 +51,11 @@ async function seedDatabase() {
+             vitals: 'HR 120, BP 160/100',
+             urgency: 'High',
+             assignedHospital: 'City General Hospital',
+-            score: 1.2,
++            score: 88,
+             travelTime: 45,
+-            status: 'Accepted'
++            status: 'Accepted',
++            autoAcceptAt: new Date(Date.now() - 10000),
++            acceptedAt: new Date(Date.now() - 5000)
+         });
+ 
+         const ref2 = new Referral({
+@@ -62,10 +64,11 @@ async function seedDatabase() {
+             symptoms: 'High Fever, Vomiting',
+             vitals: 'Temp 103F',
+             urgency: 'Medium',
+-            assignedHospital: 'North District',
+-            score: -28,
+-            travelTime: 40,
+-            status: 'Pending'
++            assignedHospital: 'Eastern Specialist',
++            score: 67,
++            travelTime: 25,
++            status: 'Pending',
++            autoAcceptAt: new Date(Date.now() + 60000)
+         });
+ 
+         await ref1.save();
+diff --git a/backend/server.js b/backend/server.js
+index a7a96c0..f4b4aa8 100644
+--- a/backend/server.js
++++ b/backend/server.js
+@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
+ import morgan from 'morgan';
+ import authRoutes from './routes/auth.js';
+ import referralRoutes from './routes/referrals.js';
++import { startReferralStatusWorker } from './jobs/referralStatusWorker.js';
+ 
+ dotenv.config();
+ 
+@@ -27,10 +28,17 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/rural-refe
+ 
+ mongoose.connect(MONGO_URI)
+   .then(() => {
+-
+     console.log('Connected to MongoDB');
++    const stopWorker = startReferralStatusWorker();
++    console.log('Referral status worker started');
++
+     app.listen(PORT, () => {
+       console.log(`Server running on port ${PORT}`);
+     });
++
++    process.on('SIGINT', () => {
++      stopWorker();
++      process.exit(0);
++    });
+   })
+   .catch(err => console.error('MongoDB connection error:', err));
+diff --git a/backend/utils/dijkstra.js b/backend/utils/dijkstra.js
+index 81f11e4..4f4599c 100644
+--- a/backend/utils/dijkstra.js
++++ b/backend/utils/dijkstra.js
+@@ -3,7 +3,7 @@ export function calculateShortestPath(graph, startNode) {
+     let visited = new Set();
+     let nodes = Object.keys(graph);
+ 
+-    for (let node of nodes) {
++      for (let node of nodes) {
+         distances[node] = Infinity;
+     }
+ 
+@@ -11,7 +11,7 @@ export function calculateShortestPath(graph, startNode) {
+         distances[startNode] = 0;
+         for (let node of nodes) {
+             if (node !== startNode) {
+-                distances[node] = 30; // default 30 mins travel time for unknown locations
++                distances[node] = 30;
+             }
+         }
+     } else {
+diff --git a/frontend/eslint.config.js b/frontend/eslint.config.js
+index 4fa125d..8933881 100644
+--- a/frontend/eslint.config.js
++++ b/frontend/eslint.config.js
+@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
+ import { defineConfig, globalIgnores } from 'eslint/config'
+ 
+ export default defineConfig([
+-  globalIgnores(['dist']),
++  globalIgnores(['dist', 'check_error.js']),
+   {
+     files: ['**/*.{js,jsx}'],
+     extends: [
+diff --git a/frontend/src/pages/CreateReferral.jsx b/frontend/src/pages/CreateReferral.jsx
+index 2af210c..5130060 100644
+--- a/frontend/src/pages/CreateReferral.jsx
++++ b/frontend/src/pages/CreateReferral.jsx
+@@ -1,12 +1,11 @@
+ import React, { useState } from 'react';
+ import { useNavigate } from 'react-router-dom';
+-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
++import { Card, CardContent } from '../components/ui/Card';
+ import { Input, Label } from '../components/ui/Input';
+ import { Button } from '../components/ui/Button';
+ import { Select } from '../components/ui/Select';
+-import { Badge } from '../components/ui/Badge';
+ import { createReferral } from '../api/referrals';
+-import { Activity, User, HeartPulse, Building2, MapPin, CheckCircle2, Navigation, Stethoscope } from 'lucide-react';
++import { Activity, User, Building2, MapPin, CheckCircle2, Navigation, Stethoscope, AlertCircle } from 'lucide-react';
+ 
+ const CreateReferral = () => {
+     const navigate = useNavigate();
+@@ -18,6 +17,27 @@ const CreateReferral = () => {
+     const [isLoading, setIsLoading] = useState(false);
+     const [error, setError] = useState(null);
+ 
++    const getVitalsWarnings = () => {
++        const warnings = [];
++        if (patientInfo.hr && (patientInfo.hr < 60 || patientInfo.hr > 100)) {
++            warnings.push(`Abnormal Heart Rate: ${patientInfo.hr} bpm (Normal: 60-100)`);
++        }
++        if (patientInfo.temp && (patientInfo.temp < 97 || patientInfo.temp > 100.4)) {
++            warnings.push(`Abnormal Temperature: ${patientInfo.temp} °F/°C (Normal: 97 - 100.4)`);
++        }
++        if (patientInfo.spo2 && patientInfo.spo2 < 95) {
++            warnings.push(`Low SpO2: ${patientInfo.spo2}% (Normal: ≥95%)`);
++        }
++        if (patientInfo.bp && patientInfo.bp.includes('/')) {
++            const [sys, dia] = patientInfo.bp.split('/').map(n => parseInt(n.trim()));
++            if (!isNaN(sys) && (sys < 90 || sys > 140)) warnings.push(`Abnormal Systolic BP: ${sys} (Normal: 90-140)`);
++            if (!isNaN(dia) && (dia < 60 || dia > 90)) warnings.push(`Abnormal Diastolic BP: ${dia} (Normal: 60-90)`);
++        }
++        return warnings;
++    };
++
++    const vitalsWarnings = getVitalsWarnings();
++
+     const handleChange = (e) => {
+         setPatientInfo({ ...patientInfo, [e.target.name]: e.target.value });
+     };
+@@ -76,7 +96,7 @@ const CreateReferral = () => {
+                                 </div>
+                                 <div>
+                                     <p className="text-xs font-bold text-surface-400 uppercase tracking-widest mb-1.5 text-left">Assigned Destination</p>
+-                                    <h3 className="text-xl font-bold text-surface-900 font-display">{referralResult.hospital}</h3>
++                                    <h3 className="text-xl font-bold text-surface-900 font-display">{referralResult.assignedHospital}</h3>
+                                     <p className="text-brand-600 text-sm font-semibold flex items-center gap-1.5 mt-1">
+                                         <MapPin className="w-3.5 h-3.5" /> Direct Route Confirmed
+                                     </p>
+@@ -185,6 +205,19 @@ const CreateReferral = () => {
+                                         />
+                                     </div>
+                                 </div>
++                                {vitalsWarnings.length > 0 && (
++                                    <div className="mt-3 p-3 rounded-xl bg-orange-50 border border-orange-200">
++                                        <h4 className="flex items-center text-sm font-bold text-orange-800 mb-1">
++                                            <AlertCircle className="w-4 h-4 mr-1.5" />
++                                            Abnormal Vitals Detected
++                                        </h4>
++                                        <ul className="list-disc pl-8 text-xs text-orange-700 font-medium space-y-0.5">
++                                            {vitalsWarnings.map((warning, idx) => (
++                                                <li key={idx}>{warning}</li>
++                                            ))}
++                                        </ul>
++                                    </div>
++                                )}
+                             </div>
+ 
+                             <div className="md:col-span-2 mt-2">
+diff --git a/frontend/src/pages/Dashboard.jsx b/frontend/src/pages/Dashboard.jsx
+index 1a1250a..c3a2205 100644
+--- a/frontend/src/pages/Dashboard.jsx
++++ b/frontend/src/pages/Dashboard.jsx
+@@ -4,7 +4,7 @@ import { Card, CardContent } from '../components/ui/Card';
+ import { Badge } from '../components/ui/Badge';
+ import { Button } from '../components/ui/Button';
+ import { getReferrals } from '../api/referrals';
+-import { Activity, Clock, CheckCircle2, AlertCircle, ArrowRight, PlusCircle, Building2, MapPin } from 'lucide-react';
++import { Activity, Clock, CheckCircle2, AlertCircle, ArrowRight, PlusCircle, Building2 } from 'lucide-react';
+ 
+ const Dashboard = () => {
+     const navigate = useNavigate();
+@@ -26,12 +26,7 @@ const Dashboard = () => {
+                 const pendingCount = data.filter(r => r.status === 'Pending').length;
+                 const acceptedCount = data.filter(r => r.status === 'Accepted').length;
+ 
+-                // Mock average calculation
+-                const totalMins = data.reduce((acc, curr) => {
+-                    const timeMatch = curr.estimatedTravelTime?.match(/(\d+)/);
+-                    if (timeMatch) return acc + parseInt(timeMatch[1]);
+-                    return acc;
+-                }, 0);
++                const totalMins = data.reduce((acc, curr) => acc + (Number(curr.travelTime) || 0), 0);
+ 
+                 const avgMins = data.length > 0 ? Math.round(totalMins / data.length) : 0;
+ 
+@@ -54,7 +49,9 @@ const Dashboard = () => {
+         fetchDashboardData();
+     }, []);
+ 
+-    const MetricCard = ({ title, value, subtitle, icon: Icon, colorClass, highlight }) => (
++    const MetricCard = ({ title, value, subtitle, icon, colorClass, highlight }) => {
++        const Icon = icon;
++        return (
+         <Card className={`relative overflow-hidden group ${highlight ? 'bg-brand-900 border-brand-800' : 'bg-white'}`}>
+             {highlight && (
+                 <div className="absolute top-0 right-0 p-8 w-48 h-48 bg-brand-800 rounded-full blur-3xl opacity-50 -mr-10 -mt-20 z-0 pointer-events-none"></div>
+@@ -75,6 +72,7 @@ const Dashboard = () => {
+             </CardContent>
+         </Card>
+     );
++    };
+ 
+     return (
+         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+@@ -163,7 +161,7 @@ const Dashboard = () => {
+                                                     </h4>
+                                                     <div className="flex items-center text-sm text-surface-500 mt-1 font-medium">
+                                                         <Clock className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+-                                                        {referral.estimatedTravelTime || '45 mins travel'}
++                                                        {referral.travelTime ? `${referral.travelTime} mins travel` : '45 mins travel'}
+                                                     </div>
+                                                 </div>
+                                             </div>
+diff --git a/frontend/src/pages/ReferralStatus.jsx b/frontend/src/pages/ReferralStatus.jsx
+index 095945a..e5a714d 100644
+--- a/frontend/src/pages/ReferralStatus.jsx
++++ b/frontend/src/pages/ReferralStatus.jsx
+@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
+ import { getReferrals } from '../api/referrals';
+ import { Badge } from '../components/ui/Badge';
+ import { Input } from '../components/ui/Input';
+-import { Search, MapPin, Clock, Building2, ChevronRight, Stethoscope, AlertCircle, FileText } from 'lucide-react';
++import { Search, Clock, Building2, ChevronRight, Stethoscope, AlertCircle, FileText } from 'lucide-react';
+ 
+ const ReferralStatus = () => {
+     const [referrals, setReferrals] = useState([]);
+diff --git a/frontend/src/pages/Signup.jsx b/frontend/src/pages/Signup.jsx
+index f840f2f..e1369ac 100644
+--- a/frontend/src/pages/Signup.jsx
++++ b/frontend/src/pages/Signup.jsx
+@@ -39,7 +39,7 @@ const Signup = () => {
+             }
+             setIsLoading(false);
+         } catch (err) {
+-            setError('Registration failed. Please try again.');
++            setError(err?.response?.data?.message || 'Registration failed. Please try again.');
+             setIsLoading(false);
+         }
+     };
