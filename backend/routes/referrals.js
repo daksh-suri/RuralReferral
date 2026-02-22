@@ -174,6 +174,24 @@ router.post('/', authMiddleware, validateReferral, async (req, res) => {
 
         await referral.save();
 
+        if (referredTo) {
+            // Deduct resources immediately when referral is routed
+            const hospitalResource = await HospitalResource.findOne({ hospitalId: referredTo });
+            if (hospitalResource) {
+                const parsedVitals = parseVitals(vitals || '');
+                const needsOxygen = parsedVitals.oxygenLevel !== null && parsedVitals.oxygenLevel < 90;
+                const needsIcu = urgency === 'High';
+                const needsAmbulance = urgency === 'High';
+
+                if (needsOxygen && hospitalResource.oxygen > 0) hospitalResource.oxygen -= 1;
+                if (needsIcu && hospitalResource.icuBeds > 0) hospitalResource.icuBeds -= 1;
+                if (needsAmbulance && hospitalResource.ambulances > 0) hospitalResource.ambulances -= 1;
+                if (hospitalResource.beds > 0) hospitalResource.beds -= 1;
+
+                await hospitalResource.save();
+            }
+        }
+
         res.status(201).json({
             referralId: referral._id,
             assignedHospital: referral.assignedHospital,

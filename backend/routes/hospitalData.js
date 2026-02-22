@@ -4,6 +4,7 @@ import HospitalResource from '../models/HospitalResource.js';
 import Referral from '../models/Referral.js';
 import Hospital from '../models/Hospital.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import { parseVitals } from '../utils/priorityIndex.js';
 
 const router = express.Router();
 
