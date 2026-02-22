@@ -8,7 +8,7 @@ export let routingMetrics = {
 export function calculateShortestPath(graph, startNode) {
     const startTime = performance.now();
 
-    let distances = {};
+    let distances = {};    
     let visited = new Set();
     let nodes = Object.keys(graph);
 

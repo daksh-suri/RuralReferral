@@ -29,7 +29,7 @@ test('login validation fails when password is missing', async () => {
 
     assert.equal(message, 'Password is required');
 });
- 
+  
 test('referral validation rejects out-of-range patient age', async () => {
     const message = await firstValidationError(validateReferral, {
         patientAge: 121,

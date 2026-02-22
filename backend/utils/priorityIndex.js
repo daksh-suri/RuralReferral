@@ -1,10 +1,3 @@
-/**
- * Priority Index: Medically consistent, deterministic classification layer.
- * Does NOT use travel time, hospital capacity, or routing metrics.
- * Reflects patient condition only.
- *
- * Output: priorityIndex (0–100), priorityLevel (HIGH | MEDIUM | LOW)
- */
 
 /**
  * Parses vitals string (e.g. "BP 120/80, HR 88, SpO2 95") into structured values.
@@ -16,28 +9,21 @@ export function parseVitals(vitalsStr) {
 
     const s = vitalsStr;
 
-    // HR / Heart Rate: "HR 88", "heart rate 88"
     const hrMatch = s.match(/\bHR\s*[:=]?\s*(\d+)/i) || s.match(/\bheart\s*rate\s*[:=]?\s*(\d+)/i);
     if (hrMatch) result.heartRate = parseInt(hrMatch[1], 10);
 
-    // BP: "120/80", "BP 120/80", "BP 120"
     const bpMatch = s.match(/\bBP\s*[:=]?\s*(\d+)(?:\s*[\/]\s*(\d+))?/i) || s.match(/(\d+)\s*[\/]\s*(\d+)/);
     if (bpMatch) {
         result.systolicBP = parseInt(bpMatch[1], 10);
         result.diastolicBP = bpMatch[2] ? parseInt(bpMatch[2], 10) : null;
     }
 
-    // SpO2 / Oxygen: "SpO2 95", "SpO2: 95", "oxygen 95"
     const o2Match = s.match(/SpO2\s*[:=]?\s*(\d+)/i) || s.match(/\boxygen\s*[:=]?\s*(\d+)/i);
     if (o2Match) result.oxygenLevel = parseInt(o2Match[1], 10);
 
     return result;
 }
 
-/**
- * Computes whether vitals indicate severe instability.
- * Based on: hypotension, hypertensive crisis, bradycardia, tachycardia, hypoxia.
- */
 function hasSevereVitalInstability({ heartRate, systolicBP, diastolicBP, oxygenLevel }) {
     if (heartRate !== null) {
         if (heartRate < 40 || heartRate > 130) return true;
@@ -50,9 +36,6 @@ function hasSevereVitalInstability({ heartRate, systolicBP, diastolicBP, oxygenL
     return false;
 }
 
-/**
- * Computes whether there is any vital instability (milder than severe).
- */
 function hasVitalInstability({ heartRate, systolicBP, diastolicBP, oxygenLevel }) {
     if (heartRate !== null && (heartRate < 50 || heartRate > 120)) return true;
     if (systolicBP !== null && (systolicBP < 100 || systolicBP > 160)) return true;
@@ -60,9 +43,6 @@ function hasVitalInstability({ heartRate, systolicBP, diastolicBP, oxygenLevel }
     return false;
 }
 
-/**
- * Strict numeric conversion. Returns null if value is missing or converts to NaN.
- */
 function toStrictNumber(value) {
     if (value == null || value === '') return null;
     const n = Number(value);

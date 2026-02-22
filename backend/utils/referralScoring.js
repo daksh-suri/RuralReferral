@@ -12,7 +12,7 @@ export const calculateReferralScore = ({ travelTime, availableCapacity, totalCap
         : 0;
     const loadScore = Math.max(0, 100 - Math.round(loadFactor * 100));
 
-    const coreScore =
+    const coreScore =    
         (timeScore * 0.30) +
         (capacityScore * 0.25) +
         (loadScore * 0.10);

@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import morgan from 'morgan';
 import authRoutes from './routes/auth.js';
 import referralRoutes from './routes/referrals.js';
+import hospitalAuthRoutes from './routes/hospitalAuth.js';
+import hospitalDataRoutes from './routes/hospitalData.js';
 import { startReferralStatusWorker } from './jobs/referralStatusWorker.js';
 import { graph } from './utils/hospitals.js';
 import { routingMetrics } from './utils/dijkstra.js';
@@ -18,6 +20,8 @@ app.use(morgan('dev'));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/referrals', referralRoutes);
+app.use('/api/hospital', hospitalAuthRoutes);
+app.use('/api/hospital', hospitalDataRoutes);
 
 app.get('/routing-metrics', (req, res) => {
   try {

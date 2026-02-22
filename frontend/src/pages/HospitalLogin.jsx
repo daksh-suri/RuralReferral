@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { Input, Label } from '../components/ui/Input';
-import { HeartPulse, Stethoscope, ShieldCheck } from 'lucide-react';
-import { login } from '../api/auth';
+import { Building2, ShieldCheck, Activity } from 'lucide-react';
+import { hospitalLogin } from '../api/hospital';
 
-const Login = () => {
-    const [contactNumber, setContactNumber] = useState('');
+const HospitalLogin = () => {
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -18,54 +18,52 @@ const Login = () => {
         setIsLoading(true);
 
         try {
-            const data = await login({ contact: contactNumber, password });
+            const data = await hospitalLogin({ email, password });
             if (data && data.token) {
-                localStorage.setItem('token', data.token);
-                navigate('/dashboard');
+                navigate('/hospital/dashboard');
             } else {
-                setError('Invalid contact number or password');
+                setError('Invalid credentials');
             }
             setIsLoading(false);
         } catch (err) {
-            setError(err.message || 'Login failed. Please try again.');
+            setError(err.response?.data?.message || err.message || 'Login failed. Please try again.');
             setIsLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex selection:bg-brand-100 selection:text-brand-900 bg-surface-50">
-            {/* Left Panel - Healthcare Branding */}
+        <div className="min-h-screen flex selection:bg-indigo-100 selection:text-indigo-900 bg-surface-50">
+            {/* Left Panel - Branding */}
             <div className="hidden lg:flex w-1/2 relative flex-col justify-between overflow-hidden">
-                <div className="absolute inset-0 bg-brand-900 overflow-hidden">
-                    <img src="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?q=80&w=2053&auto=format&fit=crop" alt="Clinical setting" className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-overlay" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-brand-950 via-brand-900/80 to-transparent"></div>
+                <div className="absolute inset-0 bg-indigo-900 overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-t from-indigo-950 via-indigo-900/80 to-transparent"></div>
                 </div>
 
                 <div className="relative z-10 p-12 h-full flex flex-col pt-16">
                     <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center text-white border border-white/20 shadow-soft">
-                            <HeartPulse className="w-6 h-6" />
+                            <Building2 className="w-6 h-6" />
                         </div>
                         <h1 className="text-2xl font-bold text-white tracking-tight font-display">
-                            Referral Opt
+                            Referral Opt - Hospital
                         </h1>
                     </div>
 
                     <div className="mt-auto pb-12">
                         <h2 className="text-4xl lg:text-5xl font-bold text-white mb-6 leading-tight font-display">
-                            Intelligent <br />
-                            Care Routing.
+                            Facility Management <br />
+                            Portal.
                         </h2>
-                        <p className="text-lg text-brand-100 max-w-md font-medium leading-relaxed">
-                            Empowering rural health workers with instant, data-driven hospital matches for critical patients.
+                        <p className="text-lg text-indigo-100 max-w-md font-medium leading-relaxed">
+                            Manage live resource capacity and securely receive instant patient referrals.
                         </p>
 
-                        <div className="mt-12 flex gap-6 text-brand-200 text-sm font-semibold tracking-wide">
+                        <div className="mt-12 flex gap-6 text-indigo-200 text-sm font-semibold tracking-wide">
                             <div className="flex items-center gap-2">
-                                <Stethoscope className="w-4 h-4" /> Clinical Precision
+                                <Activity className="w-4 h-4" /> Live Resource Sync
                             </div>
                             <div className="flex items-center gap-2">
-                                <ShieldCheck className="w-4 h-4" /> Secure Network
+                                <ShieldCheck className="w-4 h-4" /> Secure Dispatch
                             </div>
                         </div>
                     </div>
@@ -75,22 +73,10 @@ const Login = () => {
             {/* Right Panel - Login Form */}
             <div className="w-full lg:w-1/2 flex items-center justify-center p-8 lg:p-12 relative bg-white">
                 <div className="w-full max-w-[420px]">
-
-                    <div className="mb-10 lg:hidden">
-                        <div className="flex items-center gap-2 justify-center">
-                            <div className="w-10 h-10 rounded-xl bg-brand-700 flex items-center justify-center text-white shadow-soft shadow-inner-light">
-                                <HeartPulse className="w-5 h-5" />
-                            </div>
-                            <h1 className="text-2xl font-bold text-surface-900 font-display">
-                                Referral Opt
-                            </h1>
-                        </div>
-                    </div>
-
                     <div className="mb-10 text-center lg:text-left">
-                        <h2 className="text-3xl font-bold text-surface-900 font-display tracking-tight">Welcome back</h2>
+                        <h2 className="text-3xl font-bold text-surface-900 font-display tracking-tight">Facility Access</h2>
                         <p className="mt-3 text-surface-500 text-base font-medium">
-                            Please enter your details to access the network.
+                            Please enter your hospital credentials to access the network.
                         </p>
                     </div>
 
@@ -106,24 +92,19 @@ const Login = () => {
 
                         <div className="space-y-5">
                             <div>
-                                <Label htmlFor="contactNumber">Staff Contact Number</Label>
+                                <Label htmlFor="email">Work Email</Label>
                                 <Input
-                                    id="contactNumber"
-                                    type="text"
-                                    placeholder="Enter registered number"
-                                    value={contactNumber}
-                                    onChange={(e) => setContactNumber(e.target.value)}
+                                    id="email"
+                                    type="email"
+                                    placeholder="admin@hospital.com"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
                                     required
                                 />
                             </div>
 
                             <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <Label htmlFor="password" className="mb-0">Secure Password</Label>
-                                    <a href="#" className="text-sm font-semibold text-brand-600 hover:text-brand-800 transition-colors">
-                                        Forgot password?
-                                    </a>
-                                </div>
+                                <Label htmlFor="password">Secure Password</Label>
                                 <Input
                                     id="password"
                                     type="password"
@@ -135,18 +116,14 @@ const Login = () => {
                             </div>
                         </div>
 
-                        <Button
-                            type="submit"
-                            className="w-full text-base py-6"
-                            isLoading={isLoading}
-                        >
+                        <Button type="submit" className="w-full text-base py-6 bg-indigo-600 hover:bg-indigo-700 text-white" isLoading={isLoading}>
                             Sign in to network
                         </Button>
                     </form>
 
                     <div className="mt-10 text-center text-sm">
                         <span className="text-surface-500">Don't have an account? </span>
-                        <Link to="/signup" className="font-bold text-brand-600 hover:text-brand-800 transition-colors">
+                        <Link to="/hospital/signup" className="font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
                             Request access
                         </Link>
                     </div>
@@ -156,4 +133,4 @@ const Login = () => {
     );
 };
 
-export default Login;
+export default HospitalLogin;

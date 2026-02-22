@@ -2,11 +2,12 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import Referral from '../models/Referral.js';
 import Hospital from '../models/Hospital.js';
+import HospitalResource from '../models/HospitalResource.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { graph } from '../utils/hospitals.js';
 import { calculateShortestPath } from '../utils/dijkstra.js';
 import { calculateReferralScore } from '../utils/referralScoring.js';
-import { calculatePriorityIndex } from '../utils/priorityIndex.js';
+import { calculatePriorityIndex, parseVitals } from '../utils/priorityIndex.js';
 
 const router = express.Router();
 
@@ -23,44 +24,70 @@ export const validateReferral = [
 ];
 
 // Shared helper: runs Dijkstra + scoring, returns best hospital info WITHOUT saving
-async function computeBestHospital({ userLocation, urgency }) {
+async function computeBestHospital({ userLocation, urgency, vitals, trauma, conscious }) {
     if (!graph[userLocation]) return { error: 'Invalid location node', status: 400 };
 
     const distances = calculateShortestPath(graph, userLocation);
     const dbHospitals = await Hospital.find({});
 
+    const parsedVitals = parseVitals(vitals || '');
+    const needsOxygen = parsedVitals.oxygenLevel !== null && parsedVitals.oxygenLevel < 90;
+    const needsIcu = urgency === 'High' || conscious === false;
+    const needsAmbulance = urgency === 'High' || trauma === true;
+
+    const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const activeResources = await HospitalResource.find({
+        lastUpdated: { $gte: thirtyMinsAgo }
+    });
+
+    const resourceMap = {};
+    for (const res of activeResources) {
+        resourceMap[res.hospitalId.toString()] = res;
+    }
+
     let bestHospital = null;
     let bestScore = -Infinity;
     let selectedTravelTime = 0;
+    let bestHospitalId = null;
 
     for (const hospital of dbHospitals) {
-        if (hospital.availableCapacity === 0) continue;
+        const hRes = resourceMap[hospital._id.toString()];
+        if (!hRes) continue; // Skip hospitals without active resources
+
+        if (needsOxygen && hRes.oxygen <= 0) continue;
+        if (needsIcu && hRes.icuBeds <= 0) continue;
+        if (needsAmbulance && hRes.ambulances <= 0) continue;
+        if (hRes.beds <= 0) continue;
+
         const rawTravelTime = distances[hospital.locationNode];
-        console.log("Computed travelTime:", rawTravelTime);
-        if (rawTravelTime === undefined || rawTravelTime === null) {
-            return { error: 'Routing graph missing location', status: 500 };
-        }
-        if (!Number.isFinite(rawTravelTime)) return { error: 'Routing graph incomplete for this location', status: 500 };
+        if (rawTravelTime === undefined || rawTravelTime === null) continue;
+        if (!Number.isFinite(rawTravelTime)) continue;
+
+        const availableCapacity = hRes.beds + hRes.icuBeds;
+        const totalCapacity = hospital.totalCapacity > 0 ? hospital.totalCapacity : availableCapacity;
+        const loadFactor = totalCapacity > 0 ? (totalCapacity - availableCapacity) / totalCapacity : 1;
 
         const score = calculateReferralScore({
             travelTime: rawTravelTime,
-            availableCapacity: hospital.availableCapacity,
-            totalCapacity: hospital.totalCapacity,
-            loadFactor: hospital.loadFactor,
+            availableCapacity: availableCapacity,
+            totalCapacity: totalCapacity,
+            loadFactor: loadFactor,
             urgency
         });
 
         if (score > bestScore) {
             bestScore = score;
             bestHospital = hospital;
+            bestHospitalId = hospital._id;
             selectedTravelTime = rawTravelTime;
         }
     }
 
-    if (!bestHospital) return { error: 'No available hospitals found', status: 400 };
+    if (!bestHospital) return { error: 'No available hospitals with required resources found', status: 400 };
 
     return {
         assignedHospital: bestHospital.name,
+        referredTo: bestHospitalId,
         score: Number(bestScore.toFixed(4)),
         travelTime: selectedTravelTime
     };
@@ -72,8 +99,8 @@ router.post('/compute', authMiddleware, validateReferral, async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
-        const { urgency } = req.body;
-        const result = await computeBestHospital({ userLocation: req.user.location, urgency });
+        const { urgency, vitals, trauma, conscious } = req.body;
+        const result = await computeBestHospital({ userLocation: req.user.location, urgency, vitals, trauma, conscious });
 
         if (result.error) return res.status(result.status).json({ error: result.error });
 
@@ -89,7 +116,7 @@ router.post('/', authMiddleware, validateReferral, async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
 
-        const { patientAge, symptoms, vitals, urgency, status, assignedHospital, score, travelTime, trauma, symptomSeverity, conscious } = req.body;
+        const { patientAge, symptoms, vitals, urgency, status, assignedHospital, referredTo, score, travelTime, trauma, symptomSeverity, conscious } = req.body;
 
         const AUTO_ACCEPT_MS = process.env.AUTO_ACCEPT_MS || 5000;
 
@@ -136,6 +163,7 @@ router.post('/', authMiddleware, validateReferral, async (req, res) => {
             vitals,
             urgency,
             assignedHospital,
+            referredTo,
             score: Number(Number(score).toFixed(4)),
             travelTime: travelTimeNum,
             status: schemaStatus,

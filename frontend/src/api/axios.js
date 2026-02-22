@@ -7,7 +7,13 @@ const api = axios.create({
 // Request interceptor to add the JWT token to headers
 api.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('token');
+        let token = null;
+        if (config.url && config.url.includes('/hospital/')) {
+            token = localStorage.getItem('hospitalToken');
+        } else {
+            token = localStorage.getItem('token');
+        }
+
         if (token) {
             config.headers['Authorization'] = `Bearer ${token}`;
         }

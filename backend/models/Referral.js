@@ -9,11 +9,12 @@ const referralSchema = new mongoose.Schema({
     assignedHospital: { type: String, required: true },
     score: { type: Number, required: true },
     travelTime: { type: Number, required: true },
-    status: { type: String, enum: ['Pending', 'Accepted'], default: 'Pending' },
+    status: { type: String, enum: ['Pending', 'Accepted', 'Rejected'], default: 'Pending' },
     autoAcceptAt: { type: Date, required: true },
     acceptedAt: { type: Date },
     priorityIndex: { type: Number },
-    priorityLevel: { type: String, enum: ['HIGH', 'MEDIUM', 'LOW'] }
+    priorityLevel: { type: String, enum: ['HIGH', 'MEDIUM', 'LOW'] },
+    referredTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Hospital' }
 }, { timestamps: true });
 
 referralSchema.index({ status: 1, autoAcceptAt: 1 });

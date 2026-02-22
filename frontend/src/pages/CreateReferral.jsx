@@ -115,6 +115,7 @@ const CreateReferral = () => {
                 hr: patientInfo.hr,
                 spo2: patientInfo.spo2,
                 assignedHospital: hosp,
+                referredTo: data.referredTo,
                 travelTime: `${travelTime} mins`,
                 score: data.score,
                 status: 'Pending Decision',
@@ -152,6 +153,7 @@ const CreateReferral = () => {
                 urgency: createdReferral.urgency,
                 status,
                 assignedHospital: createdReferral.assignedHospital,
+                referredTo: createdReferral.referredTo,
                 score: createdReferral.score,
                 travelTime: travelTimeNum
             });
@@ -398,7 +400,7 @@ const CreateReferral = () => {
 
                 {/* Form Actions */}
                 <div className="flex flex-col sm:flex-row justify-end gap-4 pt-4 pb-12">
-                    <Button type="button" variant="outline" size="lg" onClick={() => navigate('/')} className="font-semibold px-8 border-surface-200">
+                    <Button type="button" variant="outline" size="lg" onClick={() => navigate('/dashboard')} className="font-semibold px-8 border-surface-200">
                         Cancel
                     </Button>
                     <Button type="submit" isLoading={isLoading} size="lg" className="font-semibold px-8 min-w-[200px] shadow-clinical">
